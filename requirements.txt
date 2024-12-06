@@ -1,4 +1,3 @@
-openpyxl
-xlsxwriter
+
 streamlit
 pdfplumber
