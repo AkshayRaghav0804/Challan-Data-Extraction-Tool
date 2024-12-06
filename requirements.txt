@@ -1,3 +1,5 @@
-
+openpyxl
+xlsxwriter
 streamlit
 pdfplumber
+PyPDF2
