@@ -138,6 +138,28 @@ def parse_income_tax_text(text):
             details["TOTAL"] = line.split("₹")[-1].strip()
     return details
 
+# New Function: Custom Payment Processing
+def extract_pdf_details(pdf_file):
+    reader = PyPDF2.PdfReader(pdf_file)
+    text = ""
+
+    for page in reader.pages:
+        text += page.extract_text()
+
+    patterns = {
+        "Nature of Payment": r"Nature of Payment\s*:\s*(\w+)",
+        "Amount (in Rs.)": r"Amount \(in Rs\.\)\s*:\s*₹\s*([\d,]+)",
+        "Challan No.": r"Challan No\s*:\s*(\d+)",
+        "Tender Date": r"Tender Date\s*:\s*(\d{2}/\d{2}/\d{4})",
+    }
+
+    extracted_data = {}
+    for key, pattern in patterns.items():
+        match = re.search(pattern, text)
+        extracted_data[key] = match.group(1) if match else "Not Found"
+
+    return extracted_data
+
 # Function: Save Data to Excel
 def save_to_excel(data_frames):
     output = BytesIO()
@@ -149,7 +171,7 @@ def save_to_excel(data_frames):
 
 # Streamlit App
 st.set_page_config(page_title="Challan Data Extraction Tool", layout="wide")
-st.title("💼 TDS Challan Data Extraction Tool")
+st.title("💼 TDS Data Extraction Tool")
 
 # Sidebar Configuration
 st.sidebar.header("🛠️ Process Configuration")
@@ -162,14 +184,11 @@ option = st.sidebar.radio(
 if option == "TDS Payments":
     payment_option = st.sidebar.radio(
         "Select Payment Source",
-        ["HDFC Bank", "Income Tax Department"],
+        ["HDFC Bank", "Income Tax Department with Breakup", "Income Tax Department without Breakup"],
         help="Choose the type of payment document for processing."
     )
 
-# File uploader with refresh functionality
-if "uploaded_files" not in st.session_state:
-    st.session_state.uploaded_files = []
-
+# File uploader
 uploaded_files = st.sidebar.file_uploader(
     "Upload PDF Files",
     type="pdf",
@@ -178,23 +197,15 @@ uploaded_files = st.sidebar.file_uploader(
     help="Drag and drop or upload PDF files for processing."
 )
 
-if uploaded_files:
-    st.session_state.uploaded_files = uploaded_files
-
-if st.sidebar.button("🔄 Refresh to Upload New Files"):
-    st.session_state.clear()
-    st.experimental_rerun()
-
 submit = st.sidebar.button("🚀 Start Extraction")
 
 # Main Processing Section
-if submit and st.session_state.uploaded_files:
+if submit and uploaded_files:
     st.subheader("🔍 Extracting Data from Uploaded Files")
     progress = st.progress(0)
     extracted_data = []
 
-    # Process files based on the selected option
-    for idx, pdf_file in enumerate(st.session_state.uploaded_files):
+    for idx, pdf_file in enumerate(uploaded_files):
         try:
             if option == "TDS Returns":
                 details_df = extract_details_from_pdf(pdf_file)
@@ -204,21 +215,21 @@ if submit and st.session_state.uploaded_files:
                 raw_text = process_hdfc_bank(pdf_file)
                 parsed_data = parse_hdfc_bank_text(raw_text)
                 combined_df = pd.DataFrame([parsed_data])
-            elif option == "TDS Payments" and payment_option == "Income Tax Department":
+            elif option == "TDS Payments" and payment_option == "Income Tax Department with Breakup":
                 raw_text = process_income_tax(pdf_file)
                 parsed_data = parse_income_tax_text(raw_text)
                 combined_df = pd.DataFrame([parsed_data])
+            elif option == "TDS Payments" and payment_option == "Income Tax Department without Breakup":
+                extracted_details = extract_pdf_details(pdf_file)
+                combined_df = pd.DataFrame([extracted_details])
             else:
                 raise ValueError("Invalid option selected.")
 
             extracted_data.append(combined_df)
-
-            # Update progress bar
-            progress.progress((idx + 1) / len(st.session_state.uploaded_files))
+            progress.progress((idx + 1) / len(uploaded_files))
         except Exception as e:
             st.error(f"Error processing '{pdf_file.name}': {e}")
 
-    # Display and download results
     if extracted_data:
         final_combined_df = pd.concat(extracted_data, ignore_index=True)
         st.subheader("📊 Extracted Data")
