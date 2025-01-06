@@ -184,7 +184,7 @@ option = st.sidebar.radio(
 if option == "TDS Payments":
     payment_option = st.sidebar.radio(
         "Select Payment Source",
-        ["HDFC Bank", "Income Tax Department with Breakup", "Income Tax Department without Breakup"],
+        ["HDFC Bank", "Income Tax Department with Tax Breakup", "Income Tax Department without Tax Breakup"],
         help="Choose the type of payment document for processing."
     )
 
@@ -215,11 +215,11 @@ if submit and uploaded_files:
                 raw_text = process_hdfc_bank(pdf_file)
                 parsed_data = parse_hdfc_bank_text(raw_text)
                 combined_df = pd.DataFrame([parsed_data])
-            elif option == "TDS Payments" and payment_option == "Income Tax Department with Breakup":
+            elif option == "TDS Payments" and payment_option == "Income Tax Department with Tax Breakup":
                 raw_text = process_income_tax(pdf_file)
                 parsed_data = parse_income_tax_text(raw_text)
                 combined_df = pd.DataFrame([parsed_data])
-            elif option == "TDS Payments" and payment_option == "Income Tax Department without Breakup":
+            elif option == "TDS Payments" and payment_option == "Income Tax Department without Tax Breakup":
                 extracted_details = extract_pdf_details(pdf_file)
                 combined_df = pd.DataFrame([extracted_details])
             else:
@@ -245,4 +245,4 @@ if submit and uploaded_files:
     else:
         st.warning("No data was extracted. Please check the uploaded files.")
 else:
-    st.info("Upload PDF files and click 'Start Extraction' to process your documents.")
+    st.info("Upload PDF files and click 'Start Extraction' to process the documents.")
