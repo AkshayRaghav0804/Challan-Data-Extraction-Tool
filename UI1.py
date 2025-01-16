@@ -2,10 +2,13 @@ import streamlit as st
 import pandas as pd
 import pdfplumber
 import PyPDF2
+import fitz
 import re
 from io import BytesIO
+from datetime import datetime
+from pathlib import Path
 
-# Function to extract details from TDS Returns PDF
+# Function to extract details from TDS Returns PDF (For Form 26)
 def extract_details_from_pdf(pdf_path):
     try:
         with pdfplumber.open(pdf_path) as pdf:
@@ -47,7 +50,7 @@ def extract_details_from_pdf(pdf_path):
     except Exception as e:
         return pd.DataFrame({"Error": [str(e)]})
 
-# Function to extract table from TDS Returns PDF
+# Function to extract table from TDS Returns PDF (For Form 26)
 def extract_table_from_pdf(pdf_path):
     try:
         with pdfplumber.open(pdf_path) as pdf:
@@ -138,7 +141,7 @@ def parse_income_tax_text(text):
             details["TOTAL"] = line.split("₹")[-1].strip()
     return details
 
-# New Function: Custom Payment Processing
+# Function: Custom Payment Processing
 def extract_pdf_details(pdf_file):
     reader = PyPDF2.PdfReader(pdf_file)
     text = ""
@@ -150,7 +153,7 @@ def extract_pdf_details(pdf_file):
         "Nature of Payment": r"Nature of Payment\s*:\s*(\w+)",
         "Amount (in Rs.)": r"Amount \(in Rs\.\)\s*:\s*₹\s*([\d,]+)",
         "Challan No.": r"Challan No\s*:\s*(\d+)",
-        "Tender Date": r"Tender Date\s*:\s*(\d{2}/\d{2}/\d{4})",
+        "Tender Date": r"Tender Date\s*:\s*(\d{1,2}/\d{1,2}/\d{4})",
     }
 
     extracted_data = {}
@@ -159,6 +162,107 @@ def extract_pdf_details(pdf_file):
         extracted_data[key] = match.group(1) if match else "Not Found"
 
     return extracted_data
+
+# Function for cleaning and formatting amount
+def clean_and_format_amount(amount_str):
+    try:
+        cleaned = re.sub(r'[^\d.]', '', amount_str)
+        amount = float(cleaned)
+        return "{:,.2f}".format(amount)
+    except (ValueError, TypeError):
+        return None
+
+# Function to extract Form24 details
+def extract_details_from_form24(pdf_file):
+    details = {
+        "Form No.": "",
+        "Financial Year": "",
+        "Quarter": "",
+        "Periodicity": "",
+        "Date of Filing": "",
+        "Total Tax Deducted (₹)": "",
+        "Total Challan Amount (₹)": "",
+        "Total Tax Deposited as per Deductee Details (₹)": ""
+    }
+
+    try:
+        pdf_document = fitz.open(stream=pdf_file.read(), filetype="pdf")
+        page = pdf_document.load_page(0)
+        
+        text_blocks = page.get_text("blocks")
+        text = " ".join(block[4] for block in text_blocks)
+        
+        if '24Q' in text:
+            details["Form No."] = "24Q"
+
+        year_match = re.search(r'(\d{4}-\d{2}|\d{4}-\d{4})', text)
+        if year_match:
+            details["Financial Year"] = year_match.group(1)
+
+        quarter_match = re.search(r'Q(\d)', text)
+        if quarter_match:
+            details["Quarter"] = f"Q{quarter_match.group(1)}"
+
+        periodicity_match = re.search(r'Regular', text, re.IGNORECASE)
+        if periodicity_match:
+            details["Periodicity"] = "Regular"
+
+        type_match = re.search(r'Type of Statement[^\n]*?(Regular|Original|Correction)', text, re.IGNORECASE)
+        if type_match:
+            details["Type of Statement"] = type_match.group(1)
+
+        date_match = re.search(r'(\d{1,2}\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4})', text)
+        if date_match:
+            details["Date of Filing"] = date_match.group(1)
+
+        table_rows = []
+        current_row = []
+        prev_y = None
+        
+        sorted_blocks = sorted(text_blocks, key=lambda b: (b[1], b[0]))
+        
+        for block in sorted_blocks:
+            y_coord = round(block[1], 1)
+            if prev_y is None:
+                prev_y = y_coord
+            
+            if abs(y_coord - prev_y) > 5:
+                if current_row:
+                    table_rows.append(" ".join(current_row))
+                current_row = [block[4].strip()]
+                prev_y = y_coord
+            else:
+                current_row.append(block[4].strip())
+        
+        if current_row:
+            table_rows.append(" ".join(current_row))
+
+        for row in table_rows:
+            numbers = re.findall(r'\d+\.?\d*', row)
+            large_numbers = [n for n in numbers if len(n.replace('.', '')) >= 8]
+            
+            if len(large_numbers) >= 3:
+                amounts = []
+                for num in large_numbers:
+                    formatted = clean_and_format_amount(num)
+                    if formatted:
+                        amounts.append(formatted)
+                
+                if len(amounts) >= 3:
+                    amount_values = [float(amt.replace(',', '')) for amt in amounts]
+                    max_amount = max(amount_values)
+                    max_index = amount_values.index(max_amount)
+                    
+                    details["Total Challan Amount (₹)"] = amounts[max_index]
+                    details["Total Tax Deducted (₹)"] = amounts[1 if max_index != 1 else 0]
+                    details["Total Tax Deposited as per Deductee Details (₹)"] = amounts[2]
+                    break
+
+        pdf_document.close()
+        return pd.DataFrame([details])
+
+    except Exception as e:
+        return pd.DataFrame({"Error": [str(e)]})
 
 # Function: Save Data to Excel
 def save_to_excel(data_frames):
@@ -171,17 +275,57 @@ def save_to_excel(data_frames):
 
 # Streamlit App
 st.set_page_config(page_title="Challan Data Extraction Tool", layout="wide")
-st.title("💼 TDS Data Extraction Tool")
 
-# Sidebar Configuration
+# Define the path to assets directory
+ASSETS_DIR = Path("assets")
+
+# Create assets directory if it doesn't exist
+ASSETS_DIR.mkdir(exist_ok=True)
+
+# Add logo to the sidebar
+logo_path = ASSETS_DIR / "kkc logo.png"
+if logo_path.exists():
+    st.sidebar.image(str(logo_path), width=275)
+else:
+    st.sidebar.warning("Logo file not found. Please place 'kkc logo.png' in the assets directory.")
+
+# Add user manual link in the sidebar
+manual_path = ASSETS_DIR / "KKC.pdf"
+if manual_path.exists():
+    with open(manual_path, "rb") as pdf_file:
+        pdf_bytes = pdf_file.read()
+    st.sidebar.download_button(
+        label="📖 Download User Manual",
+        data=pdf_bytes,
+        file_name="KKC.pdf",
+        mime="application/pdf"
+    )
+else:
+    st.sidebar.warning("User manual not found. Please place 'KKC.pdf' in the assets directory.")
+
+# Add title and process configuration header in the sidebar
 st.sidebar.header("🛠️ Process Configuration")
+
+# Add title in the main content area
+col1, col2 = st.columns([1, 4])
+with col2:
+    st.title("💼 TDS Data Extraction Tool")
+
+# Sidebar Options
 option = st.sidebar.radio(
     "Select Document Type",
     ["TDS Returns", "TDS Payments"],
     help="Choose the type of document for data extraction."
 )
 
-if option == "TDS Payments":
+# Additional options based on selection
+if option == "TDS Returns":
+    form_type = st.sidebar.radio(
+        "Select Form Type",
+        ["Form24Q", "Form26Q & Form27Q"],
+        help="Choose the type of TDS Return form."
+    )
+elif option == "TDS Payments":
     payment_option = st.sidebar.radio(
         "Select Payment Source",
         ["HDFC Bank", "Income Tax Department with Tax Breakup", "Income Tax Department without Tax Breakup"],
@@ -208,22 +352,24 @@ if submit and uploaded_files:
     for idx, pdf_file in enumerate(uploaded_files):
         try:
             if option == "TDS Returns":
-                details_df = extract_details_from_pdf(pdf_file)
-                table_df = extract_table_from_pdf(pdf_file)
-                combined_df = pd.concat([details_df, table_df], ignore_index=True)
-            elif option == "TDS Payments" and payment_option == "HDFC Bank":
-                raw_text = process_hdfc_bank(pdf_file)
-                parsed_data = parse_hdfc_bank_text(raw_text)
-                combined_df = pd.DataFrame([parsed_data])
-            elif option == "TDS Payments" and payment_option == "Income Tax Department with Tax Breakup":
-                raw_text = process_income_tax(pdf_file)
-                parsed_data = parse_income_tax_text(raw_text)
-                combined_df = pd.DataFrame([parsed_data])
-            elif option == "TDS Payments" and payment_option == "Income Tax Department without Tax Breakup":
-                extracted_details = extract_pdf_details(pdf_file)
-                combined_df = pd.DataFrame([extracted_details])
-            else:
-                raise ValueError("Invalid option selected.")
+                if form_type == "Form24Q":
+                    combined_df = extract_details_from_form24(pdf_file)
+                else:  # Form26
+                    details_df = extract_details_from_pdf(pdf_file)
+                    table_df = extract_table_from_pdf(pdf_file)
+                    combined_df = pd.concat([details_df, table_df], ignore_index=True)
+            elif option == "TDS Payments":
+                if payment_option == "HDFC Bank":
+                    raw_text = process_hdfc_bank(pdf_file)
+                    parsed_data = parse_hdfc_bank_text(raw_text)
+                    combined_df = pd.DataFrame([parsed_data])
+                elif payment_option == "Income Tax Department with Tax Breakup":
+                    raw_text = process_income_tax(pdf_file)
+                    parsed_data = parse_income_tax_text(raw_text)
+                    combined_df = pd.DataFrame([parsed_data])
+                else:  # Income Tax Department without Tax Breakup
+                    extracted_details = extract_pdf_details(pdf_file)
+                    combined_df = pd.DataFrame([extracted_details])
 
             extracted_data.append(combined_df)
             progress.progress((idx + 1) / len(uploaded_files))
@@ -232,17 +378,73 @@ if submit and uploaded_files:
 
     if extracted_data:
         final_combined_df = pd.concat(extracted_data, ignore_index=True)
-        st.subheader("📊 Extracted Data")
-        st.dataframe(final_combined_df)
-
+        
+        # Create two columns for data display and download button
+        data_col, download_col = st.columns([3, 1])
+        
+        with data_col:
+            st.subheader("📊 Extracted Data")
+            st.dataframe(final_combined_df)
+        
+        # Create Excel file
         excel_data = save_to_excel([final_combined_df])
-        st.download_button(
-            label="📅 Download Extracted Data (Excel)",
-            data=excel_data,
-            file_name="extracted_tds_data.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
-    else:
-        st.warning("No data was extracted. Please check the uploaded files.")
-else:
-    st.info("Upload PDF files and click 'Start Extraction' to process the documents.")
+        
+        # Add download button in the download column
+        with download_col:
+            # Generate timestamp for unique filename
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"extracted_data_{timestamp}.xlsx"
+            
+            # Add download button with timestamp in filename
+            st.download_button(
+                label="📥 Download Excel",
+                data=excel_data,
+                file_name=filename,
+                mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                key="download_button"
+            )
+# Footer
+st.markdown(
+    """
+    <style>
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    
+    .footer {
+        position: fixed;
+        bottom: 0;
+        right: 0;
+        margin: 10px;
+        padding: 10px 20px;
+        background-color: #7CB542;
+        border-radius: 5px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        width: auto;
+        z-index: 999;
+    }
+    
+    .footer p {
+        color: white;
+        font-size: 14px;
+        font-weight: 500;
+        margin: 0;
+        padding: 0;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+# Add some vertical space to prevent content from being hidden behind the footer
+st.markdown("<br>" * 3, unsafe_allow_html=True)
+
+# Footer content
+st.markdown(
+    """
+    <div class="footer">
+        <p>Created by Akshay Raghav</p>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
