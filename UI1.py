@@ -406,37 +406,3 @@ if submit and uploaded_files:
                 mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                 key="download_button"
             )
-
-# Define a directory for storing feedback
-FEEDBACK_DIR = Path("D:/FeedbackData")
-FEEDBACK_DIR.mkdir(parents=True, exist_ok=True)  # Create directory if it doesn't exist
-
-# File path for storing feedback
-feedback_file = FEEDBACK_DIR / "feedback.csv"
-
-# Create feedback file if it doesn't exist
-if not feedback_file.exists():
-    pd.DataFrame(columns=["Timestamp", "Feedback"]).to_csv(feedback_file, index=False)
-
-# Sidebar feedback form
-feedback_text = st.sidebar.text_area("Feedback", placeholder="Share your thoughts...")
-if st.sidebar.button("Submit Feedback"):
-    if feedback_text.strip():
-        try:
-            # Load existing feedback data
-            feedback_data = pd.read_csv(feedback_file)
-            
-            # Add new feedback
-            new_entry = pd.DataFrame({
-                "Timestamp": [datetime.now().strftime("%Y-%m-%d %H:%M:%S")],
-                "Feedback": [feedback_text.strip()]
-            })
-            
-            # Append and save to file
-            feedback_data = pd.concat([feedback_data, new_entry], ignore_index=True)
-            feedback_data.to_csv(feedback_file, index=False)
-            st.success("Thank you for your feedback!")
-        except Exception as e:
-            st.error(f"An error occurred while saving feedback: {e}")
-    else:
-        st.warning("Please provide feedback before submitting.")
