@@ -344,7 +344,7 @@ uploaded_files = st.sidebar.file_uploader(
 submit = st.sidebar.button("🚀 Start Extraction")
 
 # Add refresh note
-st.sidebar.info("🔄 Kindly refresh the page to upload new files.")
+st.sidebar.info("🔄 Kindly refresh the page to upload new files or start again.")
 
 # Main Processing Section
 if submit and uploaded_files:
@@ -406,48 +406,37 @@ if submit and uploaded_files:
                 mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                 key="download_button"
             )
-# Footer
-st.markdown(
-    """
-    <style>
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    
-    .footer {
-        position: fixed;
-        bottom: 0;
-        right: 0;
-        margin: 10px;
-        padding: 10px 20px;
-        background-color: #7CB542;
-        border-radius: 5px;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        width: auto;
-        z-index: 999;
-    }
-    
-    .footer p {
-        color: white;
-        font-size: 14px;
-        font-weight: 500;
-        margin: 0;
-        padding: 0;
-        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
 
-# Add some vertical space to prevent content from being hidden behind the footer
-st.markdown("<br>" * 3, unsafe_allow_html=True)
+# Define a directory for storing feedback
+FEEDBACK_DIR = Path("D:/FeedbackData")
+FEEDBACK_DIR.mkdir(parents=True, exist_ok=True)  # Create directory if it doesn't exist
 
-# Footer content
-st.markdown(
-    """
-    <div class="footer">
-        <p>Created by Akshay Raghav</p>
-    </div>
-    """,
-    unsafe_allow_html=True
-)
+# File path for storing feedback
+feedback_file = FEEDBACK_DIR / "feedback.csv"
+
+# Create feedback file if it doesn't exist
+if not feedback_file.exists():
+    pd.DataFrame(columns=["Timestamp", "Feedback"]).to_csv(feedback_file, index=False)
+
+# Sidebar feedback form
+feedback_text = st.sidebar.text_area("Feedback", placeholder="Share your thoughts...")
+if st.sidebar.button("Submit Feedback"):
+    if feedback_text.strip():
+        try:
+            # Load existing feedback data
+            feedback_data = pd.read_csv(feedback_file)
+            
+            # Add new feedback
+            new_entry = pd.DataFrame({
+                "Timestamp": [datetime.now().strftime("%Y-%m-%d %H:%M:%S")],
+                "Feedback": [feedback_text.strip()]
+            })
+            
+            # Append and save to file
+            feedback_data = pd.concat([feedback_data, new_entry], ignore_index=True)
+            feedback_data.to_csv(feedback_file, index=False)
+            st.success("Thank you for your feedback!")
+        except Exception as e:
+            st.error(f"An error occurred while saving feedback: {e}")
+    else:
+        st.warning("Please provide feedback before submitting.")
