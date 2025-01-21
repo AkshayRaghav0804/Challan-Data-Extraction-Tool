@@ -343,6 +343,9 @@ uploaded_files = st.sidebar.file_uploader(
 
 submit = st.sidebar.button("🚀 Start Extraction")
 
+# Add refresh note
+st.sidebar.info("🔄 Kindly refresh the page to upload new files.")
+
 # Main Processing Section
 if submit and uploaded_files:
     st.subheader("🔍 Extracting Data from Uploaded Files")
