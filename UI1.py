@@ -120,7 +120,8 @@ def process_income_tax(pdf_file):
 def parse_income_tax_text(text):
     details = {}
     lines = text.split("\n")
-    for line in lines:
+    
+    for i, line in enumerate(lines):
         if "TAN" in line:
             details["TAN"] = line.split(":")[-1].strip() 
             if i + 1 < len(lines):
