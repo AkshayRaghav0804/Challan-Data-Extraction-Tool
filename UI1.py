@@ -132,14 +132,14 @@ def parse_income_tax_text(text):
             details["Financial Year"] = line.split(":")[-1].strip()
         elif "Nature of Payment" in line:
             details["Nature of Payment"] = line.split(":")[-1].strip()
-        elif "Amount (in Rs.)" in line:
-            details["Amount (in Rs.)"] = line.split(":")[-1].strip()
         elif "Challan No" in line:
             details["Challan No."] = line.split(":")[-1].strip()
         elif "Tender Date" in line:
             tender_date_raw = line.split(":")[-1]
             tender_date_cleaned = tender_date_raw.split("Tax Breakup Details")[0].strip()
             details["Tender Date"] = tender_date_cleaned
+        elif line.startswith("ATax"):
+            details["Tax"] = line.split("₹")[-1].strip()    
         elif line.startswith("DInterest"):
             details["Interest"] = line.split("₹")[-1].strip()
         elif line.startswith("EPenalty"):
