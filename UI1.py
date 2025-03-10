@@ -122,7 +122,9 @@ def parse_income_tax_text(text):
     lines = text.split("\n")
     for line in lines:
         if "TAN" in line:
-            details["TAN"] = line.split(":")[-1].strip()
+            details["TAN"] = line.split(":")[-1].strip() 
+            if i + 1 < len(lines):
+                details["Name"] = re.sub(r'^Name\s*:\s*', '', lines[i + 1].strip())  
         elif "Assessment Year" in line:
             details["Assessment Year"] = line.split(":")[-1].strip()
         elif "Financial Year" in line:
@@ -157,6 +159,7 @@ def extract_pdf_details(pdf_file):
 
     patterns = {
         "TAN": r"TAN\s*:\s*([A-Z0-9]+)",
+        "Name": r"TAN\s*:\s*[A-Z0-9]+\s*\n\s*([A-Za-z&.,\s]+)\n",
         "Assessment Year": r"Assessment Year\s*:\s*(\d{4}-\d{2})",
         "Financial Year": r"Financial Year\s*:\s*(\d{4}-\d{2})",
         "Nature of Payment": r"Nature of Payment\s*:\s*(\w+)",
