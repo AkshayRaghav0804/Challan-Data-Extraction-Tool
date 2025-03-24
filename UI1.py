@@ -308,7 +308,7 @@ if manual_path.exists():
     with open(manual_path, "rb") as pdf_file:
         pdf_bytes = pdf_file.read()
     st.sidebar.download_button(
-        label="📖 Download User Manual",
+        label="📄 Download User Manual",
         data=pdf_bytes,
         file_name="KKC.pdf",
         mime="application/pdf"
@@ -322,7 +322,7 @@ st.sidebar.header("🛠️ Process Configuration")
 # Add title in the main content area
 col1, col2 = st.columns([1, 4])
 with col2:
-    st.title("💼 TDS Data Extraction Tool")
+    st.title("📄 TDS Data Extraction Tool")
 
 # Sidebar Options
 option = st.sidebar.radio(
